@@ -1,26 +1,251 @@
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
+/* ==========================================
+   Design System — Portfolio
+   ========================================== */
+
+@custom-variant dark (&:where(.dark, .dark *));
 
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --color-background: var(--bg);
+  --color-foreground: var(--fg);
+  --color-primary: #6366f1;
+  --color-primary-light: #818cf8;
+  --color-primary-dark: #4f46e5;
+  --color-accent: #06b6d4;
+  --color-accent-dark: #0891b2;
+  --color-surface: var(--surface);
+  --color-surface-hover: var(--surface-hover);
+  --color-muted: var(--muted);
+  --color-border: var(--border-color);
+  --font-sans: var(--font-inter);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+:root {
+  --bg: #fafafa;
+  --fg: #0f172a;
+  --surface: #ffffff;
+  --surface-hover: #f1f5f9;
+  --muted: #64748b;
+  --border-color: rgba(0, 0, 0, 0.08);
+}
+
+.dark {
+  --bg: #0a0a0f;
+  --fg: #f1f5f9;
+  --surface: rgba(255, 255, 255, 0.05);
+  --surface-hover: rgba(255, 255, 255, 0.08);
+  --muted: #94a3b8;
+  --border-color: rgba(255, 255, 255, 0.08);
+}
+
+/* ==========================================
+   Global Styles
+   ========================================== */
+
+html {
+  scroll-behavior: smooth;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--font-inter), system-ui, -apple-system, sans-serif;
+  transition: background-color 0.3s ease, color 0.3s ease;
+}
+
+/* Custom Scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(99, 102, 241, 0.3);
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(99, 102, 241, 0.5);
+}
+
+/* Selection */
+::selection {
+  background: rgba(99, 102, 241, 0.3);
+  color: inherit;
+}
+
+/* ==========================================
+   Gradient Text Utility
+   ========================================== */
+
+.gradient-text {
+  background: linear-gradient(135deg, #6366f1, #8b5cf6, #06b6d4);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* ==========================================
+   Glassmorphism Card
+   ========================================== */
+
+.glass-card {
+  background: var(--surface);
+  backdrop-filter: blur(12px);
+  border: 1px solid var(--border-color);
+  border-radius: 16px;
+  transition: all 0.3s ease;
+}
+
+.glass-card:hover {
+  border-color: rgba(99, 102, 241, 0.3);
+  box-shadow: 0 8px 32px rgba(99, 102, 241, 0.1);
+  transform: translateY(-2px);
+}
+
+/* ==========================================
+   Gradient Background Orbs
+   ========================================== */
+
+.gradient-orb {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(80px);
+  opacity: 0.15;
+  pointer-events: none;
+}
+
+.dark .gradient-orb {
+  opacity: 0.1;
+}
+
+/* ==========================================
+   Animated Border Gradient
+   ========================================== */
+
+.border-gradient {
+  position: relative;
+  background: var(--surface);
+  border-radius: 16px;
+  overflow: hidden;
+}
+
+.border-gradient::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  padding: 1px;
+  border-radius: 16px;
+  background: linear-gradient(135deg, rgba(99,102,241,0.5), rgba(6,182,212,0.5));
+  mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  mask-composite: exclude;
+  pointer-events: none;
+}
+
+/* ==========================================
+   Section Styles
+   ========================================== */
+
+.section-padding {
+  padding: 5rem 1.5rem;
+}
+
+@media (min-width: 768px) {
+  .section-padding {
+    padding: 7rem 2rem;
+  }
+}
+
+/* ==========================================
+   Timeline
+   ========================================== */
+
+.timeline-line {
+  position: absolute;
+  left: 1.25rem;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: linear-gradient(to bottom, #6366f1, #06b6d4);
+}
+
+@media (min-width: 768px) {
+  .timeline-line {
+    left: 50%;
+    transform: translateX(-50%);
+  }
+}
+
+.timeline-dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #6366f1, #06b6d4);
+  border: 2px solid var(--bg);
+  box-shadow: 0 0 0 4px rgba(99, 102, 241, 0.2);
+}
+
+/* ==========================================
+   Skill Icon Glow Effect
+   ========================================== */
+
+.skill-icon-glow:hover {
+  filter: drop-shadow(0 0 8px rgba(99, 102, 241, 0.4));
+}
+
+/* ==========================================
+   Admin Styles
+   ========================================== */
+
+.admin-input {
+  background: var(--surface);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  padding: 0.5rem 0.75rem;
+  color: var(--fg);
+  transition: border-color 0.2s;
+  width: 100%;
+}
+
+.admin-input:focus {
+  outline: none;
+  border-color: #6366f1;
+  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.15);
+}
+
+.admin-btn {
+  background: linear-gradient(135deg, #6366f1, #8b5cf6);
+  color: white;
+  border: none;
+  border-radius: 8px;
+  padding: 0.5rem 1.25rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.admin-btn:hover {
+  opacity: 0.9;
+  transform: translateY(-1px);
+}
+
+.admin-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.admin-btn-danger {
+  background: linear-gradient(135deg, #ef4444, #dc2626);
+}
+
+.admin-btn-secondary {
+  background: var(--surface);
+  color: var(--fg);
+  border: 1px solid var(--border-color);
+}
+
+.admin-btn-secondary:hover {
+  background: var(--surface-hover);
 }

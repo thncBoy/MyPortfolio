@@ -1,0 +1,116 @@
+"use client";
+
+import { useEffect, useState } from "react";
+import { doc, getDoc, setDoc } from "firebase/firestore";
+import { db } from "@/lib/firebase/config";
+import { FiSave, FiCheck } from "react-icons/fi";
+
+const contentKeys = [
+  {
+    key: "hero_text",
+    label: "Hero Text",
+    description: "Short intro shown on the hero section",
+    rows: 3,
+  },
+  {
+    key: "about",
+    label: "About Me",
+    description: "Full about section text",
+    rows: 8,
+  },
+];
+
+export default function AdminContent() {
+  const [values, setValues] = useState<Record<string, string>>({});
+  const [saving, setSaving] = useState<string | null>(null);
+  const [saved, setSaved] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    async function load() {
+      try {
+        const results: Record<string, string> = {};
+        for (const item of contentKeys) {
+          const snap = await getDoc(doc(db, "siteContent", item.key));
+          results[item.key] = snap.exists() ? snap.data().value : "";
+        }
+        setValues(results);
+      } catch (err) {
+        console.error("Load content error:", err);
+      } finally {
+        setLoading(false);
+      }
+    }
+    load();
+  }, []);
+
+  const handleSave = async (key: string) => {
+    setSaving(key);
+    try {
+      await setDoc(doc(db, "siteContent", key), {
+        value: values[key] || "",
+      });
+      setSaved(key);
+      setTimeout(() => setSaved(null), 2000);
+    } catch (err) {
+      console.error("Save error:", err);
+      alert("Failed to save");
+    } finally {
+      setSaving(null);
+    }
+  };
+
+  return (
+    <div className="max-w-3xl">
+      <h1 className="text-2xl font-bold mb-6">Site Content</h1>
+
+      {loading ? (
+        <div className="text-center py-12 text-muted">Loading...</div>
+      ) : (
+        <div className="space-y-6">
+          {contentKeys.map((item) => (
+            <div key={item.key} className="glass-card p-5">
+              <div className="flex items-start justify-between mb-3">
+                <div>
+                  <h3 className="font-semibold">{item.label}</h3>
+                  <p className="text-xs text-muted">{item.description}</p>
+                </div>
+                <button
+                  onClick={() => handleSave(item.key)}
+                  disabled={saving === item.key}
+                  className={`admin-btn text-sm flex items-center gap-1.5 ${
+                    saved === item.key ? "!bg-green-600" : ""
+                  }`}
+                >
+                  {saving === item.key ? (
+                    <>
+                      <span className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                      Saving
+                    </>
+                  ) : saved === item.key ? (
+                    <>
+                      <FiCheck size={14} /> Saved
+                    </>
+                  ) : (
+                    <>
+                      <FiSave size={14} /> Save
+                    </>
+                  )}
+                </button>
+              </div>
+              <textarea
+                value={values[item.key] || ""}
+                onChange={(e) =>
+                  setValues({ ...values, [item.key]: e.target.value })
+                }
+                rows={item.rows}
+                className="admin-input resize-none"
+                placeholder={`Enter ${item.label.toLowerCase()}...`}
+              />
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
