@@ -35,6 +35,12 @@ import {
   FiArrowDown,
   FiMapPin,
   FiCalendar,
+  FiFileText,
+  FiFile,
+  FiAward,
+  FiBookOpen,
+  FiExternalLink,
+  FiDownload,
 } from "react-icons/fi";
 
 import Navbar from "@/components/Navbar";
@@ -43,7 +49,8 @@ import SectionWrapper from "@/components/SectionWrapper";
 import SkillIcon from "@/components/SkillIcon";
 import ProjectCard from "@/components/ProjectCard";
 import ContactForm from "@/components/ContactForm";
-import type { Project, Experience, Education } from "@/lib/types";
+import type { Project, PortfolioDocument } from "@/lib/types";
+import { supabase } from "@/lib/supabase/client";
 
 // ==========================================
 // Skills Data
@@ -100,62 +107,12 @@ const skillCategories = [
   },
 ];
 
-// ==========================================
-// Helper: Fetch data from Firestore (client-side)
-// ==========================================
-async function fetchCollection<T>(collectionName: string): Promise<T[]> {
-  try {
-    const { db } = await import("@/lib/firebase/config");
-    const { collection, getDocs, query, orderBy } = await import(
-      "firebase/firestore"
-    );
-
-    const orderField =
-      collectionName === "pageViews" ? "visitedAt" : "displayOrder";
-    const q = query(collection(db, collectionName), orderBy(orderField, "asc"));
-    const snap = await getDocs(q);
-
-    const items: T[] = [];
-    for (const docSnap of snap.docs) {
-      const data = docSnap.data();
-
-      if (collectionName === "projects") {
-        // Fetch subcollections for images and links
-        const imagesSnap = await getDocs(
-          query(
-            collection(db, "projects", docSnap.id, "images"),
-            orderBy("displayOrder", "asc")
-          )
-        );
-        const linksSnap = await getDocs(
-          collection(db, "projects", docSnap.id, "links")
-        );
-
-        items.push({
-          id: docSnap.id,
-          ...data,
-          images: imagesSnap.docs.map((d) => ({ id: d.id, ...d.data() })),
-          links: linksSnap.docs.map((d) => ({ id: d.id, ...d.data() })),
-        } as T);
-      } else {
-        items.push({ id: docSnap.id, ...data } as T);
-      }
-    }
-    return items;
-  } catch {
-    return [];
-  }
-}
-
-async function fetchSiteContent(key: string): Promise<string> {
-  try {
-    const { db } = await import("@/lib/firebase/config");
-    const { doc, getDoc } = await import("firebase/firestore");
-    const snap = await getDoc(doc(db, "siteContent", key));
-    return snap.exists() ? snap.data().value : "";
-  } catch {
-    return "";
-  }
+function formatFileSize(bytes?: number): string {
+  if (!bytes || bytes === 0) return "";
+  const k = 1024;
+  const sizes = ["Bytes", "KB", "MB", "GB"];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return `${parseFloat((bytes / Math.pow(k, i)).toFixed(1))} ${sizes[i]}`;
 }
 
 // ==========================================
@@ -163,27 +120,65 @@ async function fetchSiteContent(key: string): Promise<string> {
 // ==========================================
 export default function HomePage() {
   const [projects, setProjects] = useState<Project[]>([]);
-  const [experiences, setExperiences] = useState<Experience[]>([]);
-  const [educations, setEducations] = useState<Education[]>([]);
+  const [documents, setDocuments] = useState<PortfolioDocument[]>([]);
   const [aboutText, setAboutText] = useState("");
   const [heroText, setHeroText] = useState("");
   const [loaded, setLoaded] = useState(false);
 
   useEffect(() => {
     async function loadData() {
-      const [proj, exp, edu, about, hero] = await Promise.all([
-        fetchCollection<Project>("projects"),
-        fetchCollection<Experience>("experience"),
-        fetchCollection<Education>("education"),
-        fetchSiteContent("about"),
-        fetchSiteContent("hero_text"),
-      ]);
-      setProjects(proj);
-      setExperiences(exp);
-      setEducations(edu);
-      setAboutText(about);
-      setHeroText(hero);
-      setLoaded(true);
+      try {
+        // Fetch projects with images and links
+        const { data: projData } = await supabase
+          .from("projects")
+          .select("*, project_images(*), project_links(*)")
+          .order("display_order", { ascending: true });
+
+        // Sort nested images by display_order
+        const sortedProjects = (projData || []).map((p) => ({
+          ...p,
+          project_images: (p.project_images || []).sort(
+            (a: { display_order: number }, b: { display_order: number }) =>
+              a.display_order - b.display_order
+          ),
+        }));
+
+        // Fetch documents (grades, resumes, certs)
+        try {
+          const { data: docData } = await supabase
+            .from("documents")
+            .select("*")
+            .eq("is_public", true)
+            .order("created_at", { ascending: false });
+
+          if (docData) {
+            setDocuments(docData as PortfolioDocument[]);
+          }
+        } catch {
+          // Documents table may not exist yet if user hasn't run documents.sql
+        }
+
+        // Fetch site content
+        const { data: aboutData } = await supabase
+          .from("site_content")
+          .select("value")
+          .eq("key", "about")
+          .single();
+
+        const { data: heroData } = await supabase
+          .from("site_content")
+          .select("value")
+          .eq("key", "hero_text")
+          .single();
+
+        setProjects(sortedProjects as Project[]);
+        setAboutText(aboutData?.value || "");
+        setHeroText(heroData?.value || "");
+      } catch (err) {
+        console.error("Load error:", err);
+      } finally {
+        setLoaded(true);
+      }
     }
     loadData();
   }, []);
@@ -256,6 +251,13 @@ export default function HomePage() {
               className="inline-flex items-center gap-2 px-6 py-3 rounded-xl bg-gradient-to-r from-primary to-purple-500 text-white font-medium transition-all hover:opacity-90 hover:shadow-lg hover:shadow-primary/25"
             >
               View Projects
+            </a>
+            <a
+              href="#documents"
+              className="inline-flex items-center gap-2 px-6 py-3 rounded-xl border border-primary/30 bg-primary/10 text-primary-light font-medium hover:bg-primary/20 transition-all"
+            >
+              <FiBookOpen size={16} />
+              View Documents / Grades
             </a>
             <a
               href="#contact"
@@ -379,123 +381,109 @@ export default function HomePage() {
       </SectionWrapper>
 
       {/* ==========================================
-          EXPERIENCE SECTION
+          DOCUMENTS & ACADEMIC RECORDS SECTION
           ========================================== */}
-      <SectionWrapper id="experience">
+      <SectionWrapper id="documents">
         <div className="max-w-4xl mx-auto">
-          <h2 className="text-3xl sm:text-4xl font-bold text-center mb-12">
-            Work <span className="gradient-text">Experience</span>
-          </h2>
+          <div className="text-center mb-12">
+            <h2 className="text-3xl sm:text-4xl font-bold">
+              Academic Records & <span className="gradient-text">Documents</span>
+            </h2>
+            <p className="text-sm sm:text-base text-muted mt-2 max-w-xl mx-auto">
+              ใบแสดงผลการเรียน (Transcript), เรซูเม่, และเอกสารสำคัญสำหรับประกอบการสมัครงาน
+            </p>
+          </div>
 
-          {experiences.length > 0 ? (
-            <div className="relative">
-              <div className="timeline-line" />
-              <div className="space-y-8">
-                {experiences.map((exp, i) => (
+          {documents.length > 0 ? (
+            <div className="grid sm:grid-cols-2 gap-4">
+              {documents.map((doc, i) => {
+                const isPdf =
+                  doc.file_name?.toLowerCase().endsWith(".pdf") ||
+                  doc.file_type?.includes("pdf");
+
+                return (
                   <motion.div
-                    key={exp.id}
-                    initial={{ opacity: 0, x: i % 2 === 0 ? -30 : 30 }}
-                    whileInView={{ opacity: 1, x: 0 }}
+                    key={doc.id}
+                    initial={{ opacity: 0, y: 20 }}
+                    whileInView={{ opacity: 1, y: 0 }}
                     viewport={{ once: true }}
-                    transition={{ duration: 0.5, delay: i * 0.1 }}
-                    className={`relative pl-12 md:pl-0 md:w-1/2 ${
-                      i % 2 === 0
-                        ? "md:pr-12 md:text-right"
-                        : "md:ml-auto md:pl-12"
-                    }`}
+                    transition={{ delay: i * 0.1 }}
+                    className="glass-card p-5 sm:p-6 flex flex-col justify-between hover:border-primary/40 transition-all group"
                   >
-                    <div className="absolute left-[14px] md:left-auto md:right-auto top-1 timeline-dot" style={{
-                      ...(i % 2 === 0
-                        ? { right: undefined, left: '14px', [`${'@media (min-width: 768px)' as string}`]: { right: '-6px', left: 'auto' } }
-                        : {})
-                    }} />
-                    <div
-                      className="absolute top-1 timeline-dot"
-                      style={{
-                        left: "14px",
-                      }}
-                    />
-                    <div className="glass-card p-5">
-                      <h3 className="font-semibold text-lg">{exp.title}</h3>
-                      <p className="text-primary-light text-sm font-medium">
-                        {exp.company}
-                      </p>
-                      <div className="flex items-center gap-1.5 text-xs text-muted mt-1 md:justify-start">
-                        <FiCalendar size={12} />
-                        <span>
-                          {exp.startDate} —{" "}
-                          {exp.endDate || "Present"}
+                    <div>
+                      <div className="flex items-start justify-between gap-3 mb-3">
+                        <div className="w-12 h-12 rounded-xl bg-primary/10 text-primary flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
+                          {doc.category === "Grade / Transcript" ? (
+                            <FiBookOpen size={22} className="text-emerald-400" />
+                          ) : doc.category === "Certificate" ? (
+                            <FiAward size={22} className="text-amber-400" />
+                          ) : isPdf ? (
+                            <FiFileText size={22} className="text-red-400" />
+                          ) : (
+                            <FiFile size={22} />
+                          )}
+                        </div>
+                        <span className="px-2.5 py-0.5 rounded-full text-xs font-medium bg-primary/10 text-primary-light border border-primary/20">
+                          {doc.category}
                         </span>
                       </div>
-                      <p className="text-sm text-muted mt-3 leading-relaxed whitespace-pre-line">
-                        {exp.description}
-                      </p>
+
+                      <h3 className="font-semibold text-lg group-hover:text-primary-light transition-colors">
+                        {doc.title}
+                      </h3>
+
+                      {doc.description && (
+                        <p className="text-sm text-muted mt-1.5 line-clamp-2 leading-relaxed">
+                          {doc.description}
+                        </p>
+                      )}
+
+                      <div className="flex items-center gap-2 text-xs text-muted mt-3">
+                        <span className="truncate max-w-[200px]">{doc.file_name}</span>
+                        {doc.file_size ? (
+                          <>
+                            <span>•</span>
+                            <span>{formatFileSize(doc.file_size)}</span>
+                          </>
+                        ) : null}
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-2 mt-5 pt-4 border-t border-border">
+                      <a
+                        href={doc.file_url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex-1 inline-flex items-center justify-center gap-2 px-4 py-2 rounded-lg bg-primary/10 hover:bg-primary/20 text-primary-light text-sm font-medium transition-all"
+                      >
+                        <FiExternalLink size={15} />
+                        เปิดดูเอกสาร
+                      </a>
+                      <a
+                        href={doc.file_url}
+                        download={doc.file_name}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="p-2 rounded-lg border border-border hover:bg-surface-hover text-muted hover:text-foreground transition-all"
+                        title="ดาวน์โหลดไฟล์"
+                      >
+                        <FiDownload size={16} />
+                      </a>
                     </div>
                   </motion.div>
-                ))}
+                );
+              })}
+            </div>
+          ) : (
+            <div className="glass-card p-10 text-center text-muted">
+              <div className="w-14 h-14 rounded-2xl bg-surface-hover flex items-center justify-center mx-auto mb-3">
+                <FiBookOpen size={24} className="text-muted" />
               </div>
-            </div>
-          ) : (
-            <div className="text-center py-12 text-muted">
-              <p>
+              <p className="font-medium text-foreground">ยังไม่มีเอกสารที่เผยแพร่</p>
+              <p className="text-xs mt-1">
                 {loaded
-                  ? "Experience will be added via the admin panel."
-                  : "Loading..."}
-              </p>
-            </div>
-          )}
-        </div>
-      </SectionWrapper>
-
-      {/* ==========================================
-          EDUCATION SECTION
-          ========================================== */}
-      <SectionWrapper id="education">
-        <div className="max-w-4xl mx-auto">
-          <h2 className="text-3xl sm:text-4xl font-bold text-center mb-12">
-            <span className="gradient-text">Education</span>
-          </h2>
-
-          {educations.length > 0 ? (
-            <div className="space-y-6">
-              {educations.map((edu, i) => (
-                <motion.div
-                  key={edu.id}
-                  initial={{ opacity: 0, y: 20 }}
-                  whileInView={{ opacity: 1, y: 0 }}
-                  viewport={{ once: true }}
-                  transition={{ delay: i * 0.1 }}
-                  className="glass-card p-5 sm:p-6"
-                >
-                  <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2">
-                    <div>
-                      <h3 className="font-semibold text-lg">{edu.degree}</h3>
-                      <p className="text-primary-light text-sm font-medium flex items-center gap-1.5">
-                        <FiMapPin size={12} />
-                        {edu.institution}
-                      </p>
-                    </div>
-                    <div className="flex items-center gap-1.5 text-xs text-muted shrink-0">
-                      <FiCalendar size={12} />
-                      <span>
-                        {edu.startDate} — {edu.endDate || "Present"}
-                      </span>
-                    </div>
-                  </div>
-                  {edu.description && (
-                    <p className="text-sm text-muted mt-3 leading-relaxed whitespace-pre-line">
-                      {edu.description}
-                    </p>
-                  )}
-                </motion.div>
-              ))}
-            </div>
-          ) : (
-            <div className="text-center py-12 text-muted">
-              <p>
-                {loaded
-                  ? "Education will be added via the admin panel."
-                  : "Loading..."}
+                  ? "สามารถอัพโหลดใบเกรดและไฟล์ต่างๆ ได้ที่ Admin Panel"
+                  : "กำลังโหลดข้อมูล..."}
               </p>
             </div>
           )}

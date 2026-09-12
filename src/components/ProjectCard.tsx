@@ -30,7 +30,7 @@ export default function ProjectCard({ project, index }: ProjectCardProps) {
       className="glass-card overflow-hidden flex flex-col"
     >
       {/* Image Carousel */}
-      <ProjectCarousel images={project.images || []} />
+      <ProjectCarousel images={project.project_images || []} />
 
       {/* Content */}
       <div className="p-5 flex flex-col flex-1">
@@ -40,9 +40,9 @@ export default function ProjectCard({ project, index }: ProjectCardProps) {
         </p>
 
         {/* Tech Tags */}
-        {project.techTags.length > 0 && (
+        {project.tech_tags.length > 0 && (
           <div className="flex flex-wrap gap-1.5 mb-4">
-            {project.techTags.map((tag) => (
+            {project.tech_tags.map((tag) => (
               <span
                 key={tag}
                 className="px-2 py-0.5 text-xs rounded-full bg-primary/10 text-primary-light font-medium"
@@ -54,9 +54,9 @@ export default function ProjectCard({ project, index }: ProjectCardProps) {
         )}
 
         {/* Links */}
-        {project.links && project.links.length > 0 && (
+        {project.project_links && project.project_links.length > 0 && (
           <div className="flex flex-wrap gap-2 pt-3 border-t border-border">
-            {project.links.map((link) => (
+            {project.project_links.map((link) => (
               <a
                 key={link.id}
                 href={link.url}

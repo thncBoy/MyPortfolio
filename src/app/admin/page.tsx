@@ -1,12 +1,13 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { collection, getDocs } from "firebase/firestore";
-import { db } from "@/lib/firebase/config";
-import { FiFolder, FiEye, FiTrendingUp } from "react-icons/fi";
+import Link from "next/link";
+import { supabase } from "@/lib/supabase/client";
+import { FiFolder, FiEye, FiTrendingUp, FiFile, FiArrowRight } from "react-icons/fi";
 
 export default function AdminDashboard() {
   const [projectCount, setProjectCount] = useState(0);
+  const [documentCount, setDocumentCount] = useState(0);
   const [totalViews, setTotalViews] = useState(0);
   const [todayViews, setTodayViews] = useState(0);
   const [dailyData, setDailyData] = useState<{ date: string; count: number }[]>([]);
@@ -16,8 +17,16 @@ export default function AdminDashboard() {
     async function load() {
       try {
         // Project count
-        const projSnap = await getDocs(collection(db, "projects"));
-        setProjectCount(projSnap.size);
+        const { count: projCount } = await supabase
+          .from("projects")
+          .select("*", { count: "exact", head: true });
+        setProjectCount(projCount || 0);
+
+        // Document / Files count
+        const { count: docCount } = await supabase
+          .from("documents")
+          .select("*", { count: "exact", head: true });
+        setDocumentCount(docCount || 0);
 
         // Views
         const viewsRes = await fetch("/api/views");
@@ -27,22 +36,31 @@ export default function AdminDashboard() {
           setTodayViews(data.today);
         }
 
-        // Daily data (last 7 days from pageViews)
-        const viewsSnap = await getDocs(collection(db, "pageViews"));
-        const days: Record<string, number> = {};
+        // Daily data (last 7 days)
         const now = new Date();
+        const days: Record<string, number> = {};
         for (let i = 6; i >= 0; i--) {
           const d = new Date(now);
           d.setDate(d.getDate() - i);
           const key = d.toISOString().split("T")[0];
           days[key] = 0;
         }
-        viewsSnap.docs.forEach((doc) => {
-          const dateStr = doc.data().visitedAt?.split("T")[0];
+
+        const sevenDaysAgo = new Date(now);
+        sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+
+        const { data: viewsData } = await supabase
+          .from("page_views")
+          .select("visited_at")
+          .gte("visited_at", sevenDaysAgo.toISOString());
+
+        (viewsData || []).forEach((v) => {
+          const dateStr = v.visited_at?.split("T")[0];
           if (dateStr && days[dateStr] !== undefined) {
             days[dateStr]++;
           }
         });
+
         setDailyData(
           Object.entries(days).map(([date, count]) => ({ date, count }))
         );
@@ -59,23 +77,48 @@ export default function AdminDashboard() {
 
   return (
     <div>
-      <h1 className="text-2xl font-bold mb-6">Dashboard</h1>
+      <div className="flex items-center justify-between mb-6">
+        <div>
+          <h1 className="text-2xl font-bold">Dashboard</h1>
+          <p className="text-sm text-muted">Overview of your portfolio metrics and contents</p>
+        </div>
+      </div>
 
       {/* Stats Cards */}
-      <div className="grid sm:grid-cols-3 gap-4 mb-8">
-        <div className="glass-card p-5">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center text-primary">
-              <FiFolder size={20} />
+      <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+        <Link href="/admin/projects" className="glass-card p-5 block group hover:border-primary/40 transition-all">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center text-primary group-hover:scale-105 transition-transform">
+                <FiFolder size={20} />
+              </div>
+              <div>
+                <p className="text-xs text-muted">Projects</p>
+                <p className="text-2xl font-bold">
+                  {loading ? "—" : projectCount}
+                </p>
+              </div>
             </div>
-            <div>
-              <p className="text-xs text-muted">Projects</p>
-              <p className="text-2xl font-bold">
-                {loading ? "—" : projectCount}
-              </p>
-            </div>
+            <FiArrowRight className="text-muted group-hover:text-primary transition-colors" size={16} />
           </div>
-        </div>
+        </Link>
+
+        <Link href="/admin/files" className="glass-card p-5 block group hover:border-purple-500/40 transition-all">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-lg bg-purple-500/10 flex items-center justify-center text-purple-500 group-hover:scale-105 transition-transform">
+                <FiFile size={20} />
+              </div>
+              <div>
+                <p className="text-xs text-muted">Files & Grades</p>
+                <p className="text-2xl font-bold">
+                  {loading ? "—" : documentCount}
+                </p>
+              </div>
+            </div>
+            <FiArrowRight className="text-muted group-hover:text-purple-500 transition-colors" size={16} />
+          </div>
+        </Link>
 
         <div className="glass-card p-5">
           <div className="flex items-center gap-3">
@@ -97,7 +140,7 @@ export default function AdminDashboard() {
               <FiTrendingUp size={20} />
             </div>
             <div>
-              <p className="text-xs text-muted">Today</p>
+              <p className="text-xs text-muted">Today Views</p>
               <p className="text-2xl font-bold">
                 {loading ? "—" : todayViews}
               </p>

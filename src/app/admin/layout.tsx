@@ -2,15 +2,14 @@
 
 import { useEffect, useState, type ReactNode } from "react";
 import { useRouter, usePathname } from "next/navigation";
-import { onAuthStateChanged, signOut, type User } from "firebase/auth";
-import { auth } from "@/lib/firebase/config";
+import { supabase } from "@/lib/supabase/client";
+import type { User } from "@supabase/supabase-js";
 import Link from "next/link";
 import {
   FiHome,
   FiFolder,
   FiFileText,
-  FiBriefcase,
-  FiBook,
+  FiFile,
   FiLogOut,
   FiMenu,
   FiX,
@@ -20,9 +19,8 @@ import {
 const sidebarLinks = [
   { href: "/admin", label: "Dashboard", icon: FiHome },
   { href: "/admin/projects", label: "Projects", icon: FiFolder },
+  { href: "/admin/files", label: "Files & Documents", icon: FiFile },
   { href: "/admin/content", label: "Content", icon: FiFileText },
-  { href: "/admin/experience", label: "Experience", icon: FiBriefcase },
-  { href: "/admin/education", label: "Education", icon: FiBook },
 ];
 
 export default function AdminLayout({ children }: { children: ReactNode }) {
@@ -33,7 +31,8 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (u) => {
+    // Check current session
+    supabase.auth.getUser().then(({ data: { user: u } }) => {
       if (u) {
         setUser(u);
       } else {
@@ -41,11 +40,24 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
       }
       setLoading(false);
     });
-    return () => unsubscribe();
+
+    // Listen to auth state changes
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (session?.user) {
+        setUser(session.user);
+      } else {
+        setUser(null);
+        router.push("/login");
+      }
+    });
+
+    return () => subscription.unsubscribe();
   }, [router]);
 
   const handleLogout = async () => {
-    await signOut(auth);
+    await supabase.auth.signOut();
     router.push("/login");
   };
 

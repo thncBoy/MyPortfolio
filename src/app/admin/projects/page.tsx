@@ -2,15 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import {
-  collection,
-  getDocs,
-  deleteDoc,
-  doc,
-  query,
-  orderBy,
-} from "firebase/firestore";
-import { db } from "@/lib/firebase/config";
+import { supabase } from "@/lib/supabase/client";
 import type { Project } from "@/lib/types";
 import { FiPlus, FiEdit2, FiTrash2, FiImage, FiFolder } from "react-icons/fi";
 
@@ -21,36 +13,23 @@ export default function AdminProjects() {
 
   const loadProjects = async () => {
     try {
-      const q = query(
-        collection(db, "projects"),
-        orderBy("displayOrder", "asc")
-      );
-      const snap = await getDocs(q);
-      const items: Project[] = [];
+      const { data, error } = await supabase
+        .from("projects")
+        .select("*, project_images(*)")
+        .order("display_order", { ascending: true });
 
-      for (const docSnap of snap.docs) {
-        const data = docSnap.data();
-        const imagesSnap = await getDocs(
-          query(
-            collection(db, "projects", docSnap.id, "images"),
-            orderBy("displayOrder", "asc")
-          )
-        );
-        items.push({
-          id: docSnap.id,
-          title: data.title,
-          description: data.description,
-          techTags: data.techTags || [],
-          displayOrder: data.displayOrder || 0,
-          createdAt: data.createdAt || "",
-          images: imagesSnap.docs.map((d) => ({
-            id: d.id,
-            ...d.data(),
-          })) as Project["images"],
-        });
-      }
+      if (error) throw error;
 
-      setProjects(items);
+      // Sort nested images by display_order
+      const sorted = (data || []).map((p) => ({
+        ...p,
+        project_images: (p.project_images || []).sort(
+          (a: { display_order: number }, b: { display_order: number }) =>
+            a.display_order - b.display_order
+        ),
+      }));
+
+      setProjects(sorted as Project[]);
     } catch (err) {
       console.error("Load projects error:", err);
     } finally {
@@ -66,20 +45,24 @@ export default function AdminProjects() {
     if (!confirm("Are you sure you want to delete this project?")) return;
     setDeleting(id);
     try {
-      // Delete subcollections first
-      const imagesSnap = await getDocs(
-        collection(db, "projects", id, "images")
-      );
-      const linksSnap = await getDocs(
-        collection(db, "projects", id, "links")
-      );
-      for (const d of imagesSnap.docs) {
-        await deleteDoc(doc(db, "projects", id, "images", d.id));
+      // Get images to delete from storage
+      const { data: images } = await supabase
+        .from("project_images")
+        .select("storage_path")
+        .eq("project_id", id);
+
+      // Delete from storage
+      const paths = (images || [])
+        .map((img) => img.storage_path)
+        .filter(Boolean);
+      if (paths.length > 0) {
+        await supabase.storage.from("project-images").remove(paths);
       }
-      for (const d of linksSnap.docs) {
-        await deleteDoc(doc(db, "projects", id, "links", d.id));
-      }
-      await deleteDoc(doc(db, "projects", id));
+
+      // Delete project (cascades to images and links)
+      const { error } = await supabase.from("projects").delete().eq("id", id);
+      if (error) throw error;
+
       setProjects((prev) => prev.filter((p) => p.id !== id));
     } catch (err) {
       console.error("Delete error:", err);
@@ -119,9 +102,9 @@ export default function AdminProjects() {
             >
               {/* Thumbnail */}
               <div className="w-16 h-16 rounded-lg bg-surface-hover flex items-center justify-center shrink-0 overflow-hidden">
-                {project.images && project.images.length > 0 ? (
+                {project.project_images && project.project_images.length > 0 ? (
                   <img
-                    src={project.images[0].imageUrl}
+                    src={project.project_images[0].image_url}
                     alt={project.title}
                     className="w-full h-full object-cover"
                   />
@@ -137,7 +120,7 @@ export default function AdminProjects() {
                   {project.description}
                 </p>
                 <div className="flex flex-wrap gap-1 mt-1">
-                  {project.techTags.slice(0, 4).map((tag) => (
+                  {project.tech_tags.slice(0, 4).map((tag) => (
                     <span
                       key={tag}
                       className="text-[10px] px-1.5 py-0.5 rounded bg-primary/10 text-primary-light"
@@ -145,9 +128,9 @@ export default function AdminProjects() {
                       {tag}
                     </span>
                   ))}
-                  {project.techTags.length > 4 && (
+                  {project.tech_tags.length > 4 && (
                     <span className="text-[10px] text-muted">
-                      +{project.techTags.length - 4}
+                      +{project.tech_tags.length - 4}
                     </span>
                   )}
                 </div>

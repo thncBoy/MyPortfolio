@@ -1,17 +1,7 @@
 "use client";
 
 import { useEffect, useState, type FormEvent } from "react";
-import {
-  collection,
-  getDocs,
-  addDoc,
-  updateDoc,
-  deleteDoc,
-  doc,
-  query,
-  orderBy,
-} from "firebase/firestore";
-import { db } from "@/lib/firebase/config";
+import { supabase } from "@/lib/supabase/client";
 import type { Education } from "@/lib/types";
 import { FiPlus, FiSave, FiTrash2, FiX } from "react-icons/fi";
 
@@ -23,16 +13,13 @@ export default function AdminEducation() {
 
   const loadItems = async () => {
     try {
-      const q = query(
-        collection(db, "education"),
-        orderBy("displayOrder", "asc")
-      );
-      const snap = await getDocs(q);
-      setItems(
-        snap.docs.map(
-          (d) => ({ id: d.id, ...d.data() }) as Education
-        )
-      );
+      const { data, error } = await supabase
+        .from("education")
+        .select("*")
+        .order("display_order", { ascending: true });
+
+      if (error) throw error;
+      setItems((data || []) as Education[]);
     } catch (err) {
       console.error("Load error:", err);
     } finally {
@@ -54,15 +41,22 @@ export default function AdminEducation() {
         institution: editItem.institution?.trim() || "",
         degree: editItem.degree?.trim() || "",
         description: editItem.description?.trim() || "",
-        startDate: editItem.startDate || "",
-        endDate: editItem.endDate || null,
-        displayOrder: editItem.displayOrder || 0,
+        start_date: editItem.start_date || "",
+        end_date: editItem.end_date || null,
+        display_order: editItem.display_order || 0,
       };
 
       if (editItem.id) {
-        await updateDoc(doc(db, "education", editItem.id), data);
+        const { error } = await supabase
+          .from("education")
+          .update(data)
+          .eq("id", editItem.id);
+        if (error) throw error;
       } else {
-        await addDoc(collection(db, "education"), data);
+        const { error } = await supabase
+          .from("education")
+          .insert(data);
+        if (error) throw error;
       }
 
       setEditItem(null);
@@ -78,7 +72,11 @@ export default function AdminEducation() {
   const handleDelete = async (id: string) => {
     if (!confirm("Delete this education entry?")) return;
     try {
-      await deleteDoc(doc(db, "education", id));
+      const { error } = await supabase
+        .from("education")
+        .delete()
+        .eq("id", id);
+      if (error) throw error;
       setItems(items.filter((i) => i.id !== id));
     } catch (err) {
       console.error("Delete error:", err);
@@ -95,9 +93,9 @@ export default function AdminEducation() {
               institution: "",
               degree: "",
               description: "",
-              startDate: "",
-              endDate: "",
-              displayOrder: items.length,
+              start_date: "",
+              end_date: "",
+              display_order: items.length,
             })
           }
           className="admin-btn flex items-center gap-2"
@@ -172,9 +170,9 @@ export default function AdminEducation() {
                   </label>
                   <input
                     type="text"
-                    value={editItem.startDate || ""}
+                    value={editItem.start_date || ""}
                     onChange={(e) =>
-                      setEditItem({ ...editItem, startDate: e.target.value })
+                      setEditItem({ ...editItem, start_date: e.target.value })
                     }
                     placeholder="e.g. 2020"
                     className="admin-input"
@@ -186,9 +184,9 @@ export default function AdminEducation() {
                   </label>
                   <input
                     type="text"
-                    value={editItem.endDate || ""}
+                    value={editItem.end_date || ""}
                     onChange={(e) =>
-                      setEditItem({ ...editItem, endDate: e.target.value })
+                      setEditItem({ ...editItem, end_date: e.target.value })
                     }
                     placeholder="e.g. 2024"
                     className="admin-input"
@@ -201,11 +199,11 @@ export default function AdminEducation() {
                 </label>
                 <input
                   type="number"
-                  value={editItem.displayOrder || 0}
+                  value={editItem.display_order || 0}
                   onChange={(e) =>
                     setEditItem({
                       ...editItem,
-                      displayOrder: parseInt(e.target.value) || 0,
+                      display_order: parseInt(e.target.value) || 0,
                     })
                   }
                   className="admin-input w-24"
@@ -255,7 +253,7 @@ export default function AdminEducation() {
                 <h3 className="font-semibold">{item.degree}</h3>
                 <p className="text-sm text-primary-light">{item.institution}</p>
                 <p className="text-xs text-muted mt-0.5">
-                  {item.startDate} — {item.endDate || "Present"}
+                  {item.start_date} — {item.end_date || "Present"}
                 </p>
                 {item.description && (
                   <p className="text-sm text-muted mt-2 line-clamp-2">

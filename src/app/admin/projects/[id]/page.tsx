@@ -1,45 +1,24 @@
 "use client";
 
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useState, useRef, type FormEvent, type ChangeEvent } from "react";
 import { useRouter, useParams } from "next/navigation";
-import {
-  doc,
-  getDoc,
-  setDoc,
-  addDoc,
-  updateDoc,
-  deleteDoc,
-  collection,
-  getDocs,
-  query,
-  orderBy,
-} from "firebase/firestore";
-import {
-  ref,
-  uploadBytes,
-  getDownloadURL,
-  deleteObject,
-} from "firebase/storage";
-import { db, storage } from "@/lib/firebase/config";
+import { supabase } from "@/lib/supabase/client";
 import {
   FiSave,
   FiPlus,
   FiTrash2,
-  FiUpload,
   FiX,
   FiArrowLeft,
   FiImage,
   FiLink,
+  FiUploadCloud,
 } from "react-icons/fi";
 
 interface ImageItem {
   id?: string;
-  imageUrl: string;
-  storagePath: string;
-  displayOrder: number;
-  file?: File;
-  preview?: string;
-  isNew?: boolean;
+  image_url: string;
+  storage_path: string;
+  display_order: number;
 }
 
 interface LinkItem {
@@ -53,6 +32,7 @@ export default function ProjectEditPage() {
   const params = useParams();
   const projectId = params.id as string;
   const isNew = projectId === "new";
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
@@ -62,6 +42,7 @@ export default function ProjectEditPage() {
   const [images, setImages] = useState<ImageItem[]>([]);
   const [links, setLinks] = useState<LinkItem[]>([]);
   const [saving, setSaving] = useState(false);
+  const [uploading, setUploading] = useState(false);
   const [loading, setLoading] = useState(!isNew);
 
   // Load existing project
@@ -70,39 +51,49 @@ export default function ProjectEditPage() {
 
     async function load() {
       try {
-        const projDoc = await getDoc(doc(db, "projects", projectId));
-        if (!projDoc.exists()) {
+        const { data: proj, error } = await supabase
+          .from("projects")
+          .select("*")
+          .eq("id", projectId)
+          .single();
+
+        if (error || !proj) {
           router.push("/admin/projects");
           return;
         }
-        const data = projDoc.data();
-        setTitle(data.title || "");
-        setDescription(data.description || "");
-        setTechTags(data.techTags || []);
-        setDisplayOrder(data.displayOrder || 0);
+
+        setTitle(proj.title || "");
+        setDescription(proj.description || "");
+        setTechTags(proj.tech_tags || []);
+        setDisplayOrder(proj.display_order || 0);
 
         // Load images
-        const imagesSnap = await getDocs(
-          query(
-            collection(db, "projects", projectId, "images"),
-            orderBy("displayOrder", "asc")
-          )
-        );
+        const { data: imagesData } = await supabase
+          .from("project_images")
+          .select("*")
+          .eq("project_id", projectId)
+          .order("display_order", { ascending: true });
+
         setImages(
-          imagesSnap.docs.map((d) => ({
+          (imagesData || []).map((d) => ({
             id: d.id,
-            ...(d.data() as Omit<ImageItem, "id">),
+            image_url: d.image_url,
+            storage_path: d.storage_path || "",
+            display_order: d.display_order,
           }))
         );
 
         // Load links
-        const linksSnap = await getDocs(
-          collection(db, "projects", projectId, "links")
-        );
+        const { data: linksData } = await supabase
+          .from("project_links")
+          .select("*")
+          .eq("project_id", projectId);
+
         setLinks(
-          linksSnap.docs.map((d) => ({
+          (linksData || []).map((d) => ({
             id: d.id,
-            ...(d.data() as Omit<LinkItem, "id">),
+            label: d.label,
+            url: d.url,
           }))
         );
       } catch (err) {
@@ -127,37 +118,76 @@ export default function ProjectEditPage() {
     setTechTags(techTags.filter((t) => t !== tag));
   };
 
-  // Handle image upload
-  const handleImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+  // Handle file upload
+  const handleFileUpload = async (e: ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
-    if (!files) return;
+    if (!files || files.length === 0) return;
+    setUploading(true);
 
-    const newImages: ImageItem[] = Array.from(files).map((file, i) => ({
-      imageUrl: "",
-      storagePath: "",
-      displayOrder: images.length + i,
-      file,
-      preview: URL.createObjectURL(file),
-      isNew: true,
-    }));
+    try {
+      for (const file of Array.from(files)) {
+        // Generate unique filename
+        const ext = file.name.split(".").pop() || "jpg";
+        const fileName = `${Date.now()}-${Math.random().toString(36).substring(7)}.${ext}`;
+        const storagePath = `projects/${fileName}`;
 
-    setImages([...images, ...newImages]);
-    e.target.value = "";
+        // Upload to Supabase Storage
+        const { error: uploadError } = await supabase.storage
+          .from("project-images")
+          .upload(storagePath, file, {
+            cacheControl: "3600",
+            upsert: false,
+          });
+
+        if (uploadError) {
+          console.error("Upload error:", uploadError);
+          continue;
+        }
+
+        // Get public URL
+        const { data: urlData } = supabase.storage
+          .from("project-images")
+          .getPublicUrl(storagePath);
+
+        setImages((prev) => [
+          ...prev,
+          {
+            image_url: urlData.publicUrl,
+            storage_path: storagePath,
+            display_order: prev.length,
+          },
+        ]);
+      }
+    } catch (err) {
+      console.error("Upload error:", err);
+      alert("Failed to upload image");
+    } finally {
+      setUploading(false);
+      // Reset file input
+      if (fileInputRef.current) {
+        fileInputRef.current.value = "";
+      }
+    }
   };
 
   const removeImage = async (index: number) => {
     const img = images[index];
-    if (img.id && img.storagePath) {
-      try {
-        await deleteObject(ref(storage, img.storagePath));
-        await deleteDoc(
-          doc(db, "projects", projectId, "images", img.id)
-        );
-      } catch (err) {
-        console.error("Delete image error:", err);
-      }
+
+    // Delete from storage if has storage_path
+    if (img.storage_path) {
+      await supabase.storage
+        .from("project-images")
+        .remove([img.storage_path]);
     }
-    if (img.preview) URL.revokeObjectURL(img.preview);
+
+    // Delete from database if has id
+    if (img.id) {
+      await supabase
+        .from("project_images")
+        .delete()
+        .eq("id", img.id);
+    }
+
     setImages(images.filter((_, i) => i !== index));
   };
 
@@ -175,11 +205,7 @@ export default function ProjectEditPage() {
   const removeLink = async (index: number) => {
     const link = links[index];
     if (link.id) {
-      try {
-        await deleteDoc(doc(db, "projects", projectId, "links", link.id));
-      } catch (err) {
-        console.error("Delete link error:", err);
-      }
+      await supabase.from("project_links").delete().eq("id", link.id);
     }
     setLinks(links.filter((_, i) => i !== index));
   };
@@ -196,53 +222,66 @@ export default function ProjectEditPage() {
       const projectData = {
         title: title.trim(),
         description: description.trim(),
-        techTags,
-        displayOrder,
-        createdAt: new Date().toISOString(),
+        tech_tags: techTags,
+        display_order: displayOrder,
       };
 
       if (isNew) {
-        const newDoc = await addDoc(collection(db, "projects"), projectData);
-        docId = newDoc.id;
+        const { data: newProj, error } = await supabase
+          .from("projects")
+          .insert(projectData)
+          .select("id")
+          .single();
+
+        if (error) throw error;
+        docId = newProj.id;
       } else {
-        await updateDoc(doc(db, "projects", projectId), projectData);
+        const { error } = await supabase
+          .from("projects")
+          .update(projectData)
+          .eq("id", projectId);
+
+        if (error) throw error;
       }
 
-      // Upload new images
+      // Save images
       for (let i = 0; i < images.length; i++) {
         const img = images[i];
-        if (img.isNew && img.file) {
-          const storagePath = `projects/${docId}/${Date.now()}_${img.file.name}`;
-          const storageRef = ref(storage, storagePath);
-          await uploadBytes(storageRef, img.file);
-          const imageUrl = await getDownloadURL(storageRef);
-
-          await addDoc(collection(db, "projects", docId, "images"), {
-            imageUrl,
-            storagePath,
-            displayOrder: i,
+        if (img.id) {
+          // Update existing
+          await supabase
+            .from("project_images")
+            .update({
+              display_order: i,
+              image_url: img.image_url,
+              storage_path: img.storage_path,
+            })
+            .eq("id", img.id);
+        } else {
+          // Insert new
+          await supabase.from("project_images").insert({
+            project_id: docId,
+            image_url: img.image_url,
+            storage_path: img.storage_path,
+            display_order: i,
           });
-        } else if (img.id) {
-          // Update display order
-          await updateDoc(
-            doc(db, "projects", docId, "images", img.id),
-            { displayOrder: i }
-          );
         }
       }
 
       // Save links
-      // Delete existing links that were removed (handled in removeLink)
-      // Add/update remaining links
       for (const link of links) {
         if (!link.label.trim() || !link.url.trim()) continue;
         if (link.id) {
-          await updateDoc(doc(db, "projects", docId, "links", link.id), {
-            label: link.label.trim(),
-            url: link.url.trim(),
-          });
+          await supabase
+            .from("project_links")
+            .update({
+              label: link.label.trim(),
+              url: link.url.trim(),
+            })
+            .eq("id", link.id);
         } else {
-          await addDoc(collection(db, "projects", docId, "links"), {
+          await supabase.from("project_links").insert({
+            project_id: docId,
             label: link.label.trim(),
             url: link.url.trim(),
           });
@@ -364,12 +403,14 @@ export default function ProjectEditPage() {
           </div>
         </div>
 
-        {/* Images */}
+        {/* Images — File Upload to Supabase Storage */}
         <div>
           <label className="block text-sm font-medium mb-1.5">
             <FiImage className="inline mr-1" size={14} />
             Project Images
           </label>
+
+          {/* Existing images */}
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-3">
             {images.map((img, i) => (
               <div
@@ -377,9 +418,13 @@ export default function ProjectEditPage() {
                 className="relative aspect-video rounded-lg overflow-hidden bg-surface-hover group"
               >
                 <img
-                  src={img.preview || img.imageUrl}
+                  src={img.image_url}
                   alt={`Image ${i + 1}`}
                   className="w-full h-full object-cover"
+                  onError={(e) => {
+                    (e.target as HTMLImageElement).src =
+                      "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='120' fill='%23666'%3E%3Crect width='200' height='120' fill='%23222'/%3E%3Ctext x='50%25' y='50%25' text-anchor='middle' dy='.3em' font-size='14'%3EImage Error%3C/text%3E%3C/svg%3E";
+                  }}
                 />
                 <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
                   <button
@@ -395,20 +440,37 @@ export default function ProjectEditPage() {
                 </span>
               </div>
             ))}
-
-            {/* Upload Button */}
-            <label className="aspect-video rounded-lg border-2 border-dashed border-border hover:border-primary/50 flex flex-col items-center justify-center cursor-pointer transition-colors">
-              <FiUpload className="text-muted mb-1" size={20} />
-              <span className="text-xs text-muted">Upload</span>
-              <input
-                type="file"
-                accept="image/*"
-                multiple
-                onChange={handleImageSelect}
-                className="hidden"
-              />
-            </label>
           </div>
+
+          {/* Upload area */}
+          <div
+            onClick={() => fileInputRef.current?.click()}
+            className="border-2 border-dashed border-border rounded-xl p-6 text-center cursor-pointer hover:border-primary/50 hover:bg-primary/5 transition-all"
+          >
+            <FiUploadCloud className="mx-auto text-muted mb-2" size={28} />
+            <p className="text-sm text-muted">
+              {uploading ? (
+                <span className="flex items-center justify-center gap-2">
+                  <span className="w-4 h-4 border-2 border-primary/30 border-t-primary rounded-full animate-spin" />
+                  Uploading...
+                </span>
+              ) : (
+                <>
+                  คลิกเพื่อเลือกรูป หรือลากไฟล์มาวาง
+                  <br />
+                  <span className="text-xs text-muted/70">PNG, JPG, WEBP (สูงสุด 5MB)</span>
+                </>
+              )}
+            </p>
+          </div>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/*"
+            multiple
+            onChange={handleFileUpload}
+            className="hidden"
+          />
         </div>
 
         {/* Links */}

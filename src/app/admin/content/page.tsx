@@ -1,8 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { doc, getDoc, setDoc } from "firebase/firestore";
-import { db } from "@/lib/firebase/config";
+import { supabase } from "@/lib/supabase/client";
 import { FiSave, FiCheck } from "react-icons/fi";
 
 const contentKeys = [
@@ -31,8 +30,12 @@ export default function AdminContent() {
       try {
         const results: Record<string, string> = {};
         for (const item of contentKeys) {
-          const snap = await getDoc(doc(db, "siteContent", item.key));
-          results[item.key] = snap.exists() ? snap.data().value : "";
+          const { data } = await supabase
+            .from("site_content")
+            .select("value")
+            .eq("key", item.key)
+            .single();
+          results[item.key] = data?.value || "";
         }
         setValues(results);
       } catch (err) {
@@ -47,9 +50,12 @@ export default function AdminContent() {
   const handleSave = async (key: string) => {
     setSaving(key);
     try {
-      await setDoc(doc(db, "siteContent", key), {
-        value: values[key] || "",
-      });
+      const { error } = await supabase
+        .from("site_content")
+        .upsert({ key, value: values[key] || "" });
+
+      if (error) throw error;
+
       setSaved(key);
       setTimeout(() => setSaved(null), 2000);
     } catch (err) {

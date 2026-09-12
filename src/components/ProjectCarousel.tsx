@@ -73,7 +73,7 @@ export default function ProjectCarousel({ images }: ProjectCarouselProps) {
       <AnimatePresence initial={false} custom={direction} mode="popLayout">
         <motion.img
           key={current}
-          src={images[current].imageUrl}
+          src={images[current].image_url}
           alt={`Project screenshot ${current + 1}`}
           className="absolute inset-0 w-full h-full object-cover"
           custom={direction}
