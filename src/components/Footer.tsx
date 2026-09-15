@@ -10,7 +10,7 @@ export default function Footer() {
           <div className="flex flex-col items-center md:items-start gap-2">
             <span className="text-lg font-bold gradient-text">TC.</span>
             <p className="text-xs text-muted">
-              Built with <FiHeart className="inline w-3 h-3 text-red-400" /> using Next.js & Firebase
+              Built with <FiHeart className="inline w-3 h-3 text-red-400" /> using Next.js & supabase
             </p>
           </div>
 

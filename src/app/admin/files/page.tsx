@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useState, useRef, type FormEvent, type ChangeEvent } from "react";
-import { supabase } from "@/lib/supabase/client";
 import type { PortfolioDocument } from "@/lib/types";
 import {
   FiUploadCloud,
@@ -52,19 +51,17 @@ export default function AdminFilesPage() {
     setLoading(true);
     setError("");
     try {
-      const { data, error: fetchErr } = await supabase
-        .from("documents")
-        .select("*")
-        .order("created_at", { ascending: false });
+      const res = await fetch("/api/documents");
+      const data = await res.json();
 
-      if (fetchErr) {
-        if (fetchErr.message?.includes("does not exist") || fetchErr.message?.includes("schema cache")) {
+      if (!res.ok) {
+        if (data.error?.includes("does not exist") || data.error?.includes("schema cache")) {
           setTableMissing(true);
         } else {
-          setError(fetchErr.message);
+          setError(data.error || "Failed to load documents");
         }
       } else {
-        setDocuments(data || []);
+        setDocuments(data.documents || []);
         setTableMissing(false);
       }
     } catch (err: any) {
@@ -105,51 +102,26 @@ export default function AdminFilesPage() {
     setError("");
 
     try {
-      // 1. Upload to Supabase Storage 'documents' bucket
-      const timestamp = Date.now();
-      const sanitizedName = selectedFile.name.replace(/[^a-zA-Z0-9.-]/g, "_");
-      const storagePath = `uploads/${timestamp}_${sanitizedName}`;
+      const formData = new FormData();
+      formData.append("file", selectedFile);
+      formData.append("title", title.trim());
+      formData.append("category", category);
+      formData.append("description", description.trim());
+      formData.append("is_public", isPublic ? "true" : "false");
 
-      const { error: uploadError } = await supabase.storage
-        .from("documents")
-        .upload(storagePath, selectedFile, {
-          cacheControl: "3600",
-          upsert: true,
-        });
+      // Upload through server API (bypasses RLS issues safely)
+      const res = await fetch("/api/documents", {
+        method: "POST",
+        body: formData,
+      });
 
-      if (uploadError) {
-        throw new Error(`Storage upload failed: ${uploadError.message}`);
-      }
+      const data = await res.json();
 
-      // 2. Get Public URL
-      const { data: urlData } = supabase.storage
-        .from("documents")
-        .getPublicUrl(storagePath);
-
-      const fileUrl = urlData.publicUrl;
-
-      // 3. Save metadata to 'documents' table
-      const { data: insertData, error: insertError } = await supabase
-        .from("documents")
-        .insert({
-          title: title.trim(),
-          description: description.trim(),
-          category,
-          file_url: fileUrl,
-          storage_path: storagePath,
-          file_name: selectedFile.name,
-          file_size: selectedFile.size,
-          file_type: selectedFile.type,
-          is_public: isPublic,
-        })
-        .select()
-        .single();
-
-      if (insertError) {
-        if (insertError.message?.includes("does not exist")) {
+      if (!res.ok) {
+        if (data.error?.includes("does not exist") || data.error?.includes("schema cache")) {
           setTableMissing(true);
         }
-        throw new Error(`Database insert failed: ${insertError.message}`);
+        throw new Error(data.error || "Upload failed");
       }
 
       // Reset form
@@ -159,8 +131,8 @@ export default function AdminFilesPage() {
       if (fileInputRef.current) fileInputRef.current.value = "";
 
       // Refresh document list
-      if (insertData) {
-        setDocuments((prev) => [insertData, ...prev]);
+      if (data.document) {
+        setDocuments((prev) => [data.document, ...prev]);
       } else {
         loadDocuments();
       }
@@ -175,18 +147,19 @@ export default function AdminFilesPage() {
     if (!confirm(`คุณต้องการลบไฟล์ "${doc.title}" ใช่หรือไม่?`)) return;
 
     try {
-      // Delete from storage
-      if (doc.storage_path) {
-        await supabase.storage.from("documents").remove([doc.storage_path]);
+      const res = await fetch("/api/documents", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          id: doc.id,
+          storage_path: doc.storage_path,
+        }),
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || "Delete failed");
       }
-
-      // Delete from database
-      const { error: delError } = await supabase
-        .from("documents")
-        .delete()
-        .eq("id", doc.id);
-
-      if (delError) throw delError;
 
       setDocuments((prev) => prev.filter((d) => d.id !== doc.id));
     } catch (err: any) {

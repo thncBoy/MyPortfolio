@@ -7,9 +7,15 @@ import type { ProjectImage } from "@/lib/types";
 
 interface ProjectCarouselProps {
   images: ProjectImage[];
+  aspectRatio?: "video" | "square" | "card";
+  rounded?: "top" | "all" | "none";
 }
 
-export default function ProjectCarousel({ images }: ProjectCarouselProps) {
+export default function ProjectCarousel({
+  images,
+  aspectRatio = "video",
+  rounded = "top",
+}: ProjectCarouselProps) {
   const [current, setCurrent] = useState(0);
   const [isPaused, setIsPaused] = useState(false);
   const [direction, setDirection] = useState(1);
@@ -34,9 +40,22 @@ export default function ProjectCarousel({ images }: ProjectCarouselProps) {
     return () => clearInterval(timer);
   }, [hasImages, images.length, isPaused, goNext]);
 
+  const aspectClass =
+    aspectRatio === "square"
+      ? "aspect-square"
+      : aspectRatio === "card"
+        ? "aspect-[4/3]"
+        : "aspect-video";
+  const roundedClass =
+    rounded === "all"
+      ? "rounded-xl"
+      : rounded === "none"
+        ? ""
+        : "rounded-t-xl";
+
   if (!hasImages) {
     return (
-      <div className="aspect-video bg-surface rounded-t-xl flex items-center justify-center">
+      <div className={`${aspectClass} bg-surface ${roundedClass} flex items-center justify-center`}>
         <div className="text-center text-muted">
           <div className="w-12 h-12 mx-auto mb-2 rounded-xl bg-primary/10 flex items-center justify-center">
             <svg className="w-6 h-6 text-primary" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -66,7 +85,7 @@ export default function ProjectCarousel({ images }: ProjectCarouselProps) {
 
   return (
     <div
-      className="relative aspect-video overflow-hidden rounded-t-xl bg-black group"
+      className={`relative ${aspectClass} overflow-hidden ${roundedClass} bg-black group`}
       onMouseEnter={() => setIsPaused(true)}
       onMouseLeave={() => setIsPaused(false)}
     >

@@ -8,6 +8,7 @@ export interface Project {
   title: string;
   description: string;
   tech_tags: string[];
+  features: string[];
   display_order: number;
   created_at: string;
   project_images?: ProjectImage[];

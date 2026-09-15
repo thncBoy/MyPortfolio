@@ -26,6 +26,10 @@ import {
   SiDocker,
   SiApple,
   SiRaspberrypi,
+  SiGo,
+  SiOpenjdk,
+  SiC,
+  SiDotnet,
 } from "react-icons/si";
 import { FaWindows } from "react-icons/fa";
 import {
@@ -41,6 +45,8 @@ import {
   FiBookOpen,
   FiExternalLink,
   FiDownload,
+  FiLinkedin,
+  FiBriefcase,
 } from "react-icons/fi";
 
 import Navbar from "@/components/Navbar";
@@ -73,6 +79,16 @@ const skillCategories = [
       { icon: SiTypescript, name: "TypeScript", color: "#3178C6" },
       { icon: SiJavascript, name: "JavaScript", color: "#F7DF1E" },
       { icon: SiPython, name: "Python", color: "#3776AB" },
+    ],
+  },
+  {
+    title: "Basic Programming",
+    subtitle: "เรียนมาแต่ไม่ได้ใช้เป็นหลัก",
+    skills: [
+      { icon: SiGo, name: "Go", color: "#00ADD8" },
+      { icon: SiOpenjdk, name: "Java (OOP)", color: "#ED8B00" },
+      { icon: SiC, name: "C", color: "#A8B9CC" },
+      { icon: SiDotnet, name: "C#", color: "#239120" },
     ],
   },
   {
@@ -123,6 +139,7 @@ export default function HomePage() {
   const [documents, setDocuments] = useState<PortfolioDocument[]>([]);
   const [aboutText, setAboutText] = useState("");
   const [heroText, setHeroText] = useState("");
+  const [socialLinks, setSocialLinks] = useState<Record<string, string>>({});
   const [loaded, setLoaded] = useState(false);
 
   useEffect(() => {
@@ -174,6 +191,18 @@ export default function HomePage() {
         setProjects(sortedProjects as Project[]);
         setAboutText(aboutData?.value || "");
         setHeroText(heroData?.value || "");
+
+        // Fetch social links
+        const socialKeys = ["social_linkedin", "social_github", "social_jobthai", "social_jobbkk"];
+        const { data: socialData } = await supabase
+          .from("site_content")
+          .select("key, value")
+          .in("key", socialKeys);
+        const socials: Record<string, string> = {};
+        (socialData || []).forEach((row: { key: string; value: string }) => {
+          socials[row.key] = row.value;
+        });
+        setSocialLinks(socials);
       } catch (err) {
         console.error("Load error:", err);
       } finally {
@@ -227,7 +256,7 @@ export default function HomePage() {
             transition={{ duration: 0.6, delay: 0.2 }}
             className="text-xl sm:text-2xl text-muted font-medium mb-6"
           >
-            Software Developer
+
           </motion.p>
 
           <motion.p
@@ -266,6 +295,61 @@ export default function HomePage() {
               Contact Me
             </a>
           </motion.div>
+
+          {/* Social Icons Row */}
+          {Object.values(socialLinks).some(Boolean) && (
+            <motion.div
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.5, delay: 0.55 }}
+              className="flex items-center justify-center gap-3 mt-6"
+            >
+              {socialLinks.social_linkedin && (
+                <a
+                  href={socialLinks.social_linkedin}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  title="LinkedIn"
+                  className="w-10 h-10 rounded-xl bg-surface border border-border flex items-center justify-center text-muted hover:text-[#0A66C2] hover:border-[#0A66C2]/40 hover:bg-[#0A66C2]/10 transition-all"
+                >
+                  <FiLinkedin size={18} />
+                </a>
+              )}
+              {socialLinks.social_github && (
+                <a
+                  href={socialLinks.social_github}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  title="GitHub"
+                  className="w-10 h-10 rounded-xl bg-surface border border-border flex items-center justify-center text-muted hover:text-foreground hover:border-foreground/40 hover:bg-surface-hover transition-all"
+                >
+                  <FiGithub size={18} />
+                </a>
+              )}
+              {socialLinks.social_jobthai && (
+                <a
+                  href={socialLinks.social_jobthai}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  title="JobThai"
+                  className="w-10 h-10 rounded-xl bg-surface border border-border flex items-center justify-center text-muted hover:text-[#00A651]/80 hover:border-[#00A651]/40 hover:bg-[#00A651]/10 transition-all text-xs font-bold"
+                >
+                  JT
+                </a>
+              )}
+              {socialLinks.social_jobbkk && (
+                <a
+                  href={socialLinks.social_jobbkk}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  title="JobBKK"
+                  className="w-10 h-10 rounded-xl bg-surface border border-border flex items-center justify-center text-muted hover:text-[#E8340E]/80 hover:border-[#E8340E]/40 hover:bg-[#E8340E]/10 transition-all text-xs font-bold"
+                >
+                  BK
+                </a>
+              )}
+            </motion.div>
+          )}
         </div>
 
         {/* Scroll Indicator */}
@@ -319,9 +403,14 @@ export default function HomePage() {
                 transition={{ delay: catIndex * 0.1 }}
                 className="glass-card p-5 sm:p-6"
               >
-                <h3 className="text-sm font-semibold text-primary-light uppercase tracking-wider mb-4">
-                  {category.title}
-                </h3>
+                <div className="mb-4">
+                  <h3 className="text-sm font-semibold text-primary-light uppercase tracking-wider">
+                    {category.title}
+                  </h3>
+                  {"subtitle" in category && category.subtitle && (
+                    <p className="text-xs text-muted mt-0.5">{category.subtitle}</p>
+                  )}
+                </div>
                 <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8 gap-2">
                   {category.skills.map((skill) => (
                     <SkillIcon
@@ -549,6 +638,63 @@ export default function HomePage() {
                   <p className="text-sm font-medium">github.com/thncBoy</p>
                 </div>
               </a>
+
+              {/* Professional Platforms */}
+              {Object.values(socialLinks).some(Boolean) && (
+                <div className="pt-2">
+                  <p className="text-xs text-muted font-medium mb-3">หาผมได้ที่</p>
+                  <div className="space-y-2">
+                    {socialLinks.social_linkedin && (
+                      <a
+                        href={socialLinks.social_linkedin}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="glass-card p-4 flex items-center gap-3 group"
+                      >
+                        <div className="w-10 h-10 rounded-lg bg-[#0A66C2]/10 flex items-center justify-center text-[#0A66C2] group-hover:bg-[#0A66C2] group-hover:text-white transition-all">
+                          <FiLinkedin size={18} />
+                        </div>
+                        <div>
+                          <p className="text-xs text-muted">LinkedIn</p>
+                          <p className="text-sm font-medium">โปรไฟล์ LinkedIn</p>
+                        </div>
+                      </a>
+                    )}
+                    {socialLinks.social_jobthai && (
+                      <a
+                        href={socialLinks.social_jobthai}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="glass-card p-4 flex items-center gap-3 group"
+                      >
+                        <div className="w-10 h-10 rounded-lg bg-[#00A651]/10 flex items-center justify-center text-[#00A651] group-hover:bg-[#00A651] group-hover:text-white transition-all text-xs font-bold">
+                          JT
+                        </div>
+                        <div>
+                          <p className="text-xs text-muted">JobThai</p>
+                          <p className="text-sm font-medium">โปรไฟล์ JobThai</p>
+                        </div>
+                      </a>
+                    )}
+                    {socialLinks.social_jobbkk && (
+                      <a
+                        href={socialLinks.social_jobbkk}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="glass-card p-4 flex items-center gap-3 group"
+                      >
+                        <div className="w-10 h-10 rounded-lg bg-[#E8340E]/10 flex items-center justify-center text-[#E8340E] group-hover:bg-[#E8340E] group-hover:text-white transition-all text-xs font-bold">
+                          BK
+                        </div>
+                        <div>
+                          <p className="text-xs text-muted">JobBKK</p>
+                          <p className="text-sm font-medium">โปรไฟล์ JobBKK</p>
+                        </div>
+                      </a>
+                    )}
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Contact Form */}

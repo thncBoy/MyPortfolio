@@ -9,6 +9,7 @@ CREATE TABLE IF NOT EXISTS projects (
   title TEXT NOT NULL,
   description TEXT DEFAULT '',
   tech_tags TEXT[] DEFAULT '{}',
+  features TEXT[] DEFAULT '{}',
   display_order INTEGER DEFAULT 0,
   created_at TIMESTAMPTZ DEFAULT now()
 );

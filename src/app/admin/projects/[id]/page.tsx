@@ -38,6 +38,8 @@ export default function ProjectEditPage() {
   const [description, setDescription] = useState("");
   const [techInput, setTechInput] = useState("");
   const [techTags, setTechTags] = useState<string[]>([]);
+  const [featureInput, setFeatureInput] = useState("");
+  const [features, setFeatures] = useState<string[]>([]);
   const [displayOrder, setDisplayOrder] = useState(0);
   const [images, setImages] = useState<ImageItem[]>([]);
   const [links, setLinks] = useState<LinkItem[]>([]);
@@ -65,6 +67,7 @@ export default function ProjectEditPage() {
         setTitle(proj.title || "");
         setDescription(proj.description || "");
         setTechTags(proj.tech_tags || []);
+        setFeatures(proj.features || []);
         setDisplayOrder(proj.display_order || 0);
 
         // Load images
@@ -118,6 +121,19 @@ export default function ProjectEditPage() {
     setTechTags(techTags.filter((t) => t !== tag));
   };
 
+  // Handle features input
+  const addFeature = () => {
+    const feat = featureInput.trim();
+    if (feat) {
+      setFeatures([...features, feat]);
+      setFeatureInput("");
+    }
+  };
+
+  const removeFeature = (index: number) => {
+    setFeatures(features.filter((_, i) => i !== index));
+  };
+
   // Handle file upload
   const handleFileUpload = async (e: ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
@@ -126,44 +142,34 @@ export default function ProjectEditPage() {
 
     try {
       for (const file of Array.from(files)) {
-        // Generate unique filename
-        const ext = file.name.split(".").pop() || "jpg";
-        const fileName = `${Date.now()}-${Math.random().toString(36).substring(7)}.${ext}`;
-        const storagePath = `projects/${fileName}`;
+        const formData = new FormData();
+        formData.append("file", file);
+        formData.append("bucket", "project-images");
 
-        // Upload to Supabase Storage
-        const { error: uploadError } = await supabase.storage
-          .from("project-images")
-          .upload(storagePath, file, {
-            cacheControl: "3600",
-            upsert: false,
-          });
+        const res = await fetch("/api/upload", {
+          method: "POST",
+          body: formData,
+        });
 
-        if (uploadError) {
-          console.error("Upload error:", uploadError);
-          continue;
+        const data = await res.json();
+        if (!res.ok) {
+          throw new Error(data.error || "Upload failed");
         }
-
-        // Get public URL
-        const { data: urlData } = supabase.storage
-          .from("project-images")
-          .getPublicUrl(storagePath);
 
         setImages((prev) => [
           ...prev,
           {
-            image_url: urlData.publicUrl,
-            storage_path: storagePath,
+            image_url: data.url,
+            storage_path: data.storage_path,
             display_order: prev.length,
           },
         ]);
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error("Upload error:", err);
-      alert("Failed to upload image");
+      alert(`Failed to upload image: ${err?.message || ""}`);
     } finally {
       setUploading(false);
-      // Reset file input
       if (fileInputRef.current) {
         fileInputRef.current.value = "";
       }
@@ -223,6 +229,7 @@ export default function ProjectEditPage() {
         title: title.trim(),
         description: description.trim(),
         tech_tags: techTags,
+        features: features,
         display_order: displayOrder,
       };
 
@@ -270,19 +277,28 @@ export default function ProjectEditPage() {
 
       // Save links
       for (const link of links) {
-        if (!link.label.trim() || !link.url.trim()) continue;
+        if (!link.url.trim()) continue; // skip if no URL
+        // Auto-generate label from domain if not provided
+        let finalLabel = link.label.trim();
+        if (!finalLabel) {
+          try {
+            finalLabel = new URL(link.url.trim()).hostname.replace(/^www\./, "");
+          } catch {
+            finalLabel = link.url.trim();
+          }
+        }
         if (link.id) {
           await supabase
             .from("project_links")
             .update({
-              label: link.label.trim(),
+              label: finalLabel,
               url: link.url.trim(),
             })
             .eq("id", link.id);
         } else {
           await supabase.from("project_links").insert({
             project_id: docId,
-            label: link.label.trim(),
+            label: finalLabel,
             url: link.url.trim(),
           });
         }
@@ -403,6 +419,47 @@ export default function ProjectEditPage() {
           </div>
         </div>
 
+        {/* Key Features */}
+        <div>
+          <label className="block text-sm font-medium mb-1.5">Key Features</label>
+          <div className="flex gap-2 mb-2">
+            <input
+              type="text"
+              value={featureInput}
+              onChange={(e) => setFeatureInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  addFeature();
+                }
+              }}
+              placeholder="เพิ่ม feature (กด Enter)"
+              className="admin-input flex-1"
+            />
+            <button type="button" onClick={addFeature} className="admin-btn-secondary admin-btn px-3">
+              <FiPlus size={16} />
+            </button>
+          </div>
+          <ul className="space-y-1.5">
+            {features.map((feat, i) => (
+              <li
+                key={i}
+                className="flex items-center gap-2 text-sm px-3 py-1.5 rounded-lg bg-surface-hover"
+              >
+                <span className="w-1.5 h-1.5 rounded-full bg-primary shrink-0" />
+                <span className="flex-1">{feat}</span>
+                <button
+                  type="button"
+                  onClick={() => removeFeature(i)}
+                  className="text-muted hover:text-red-400 transition-colors"
+                >
+                  <FiX size={14} />
+                </button>
+              </li>
+            ))}
+          </ul>
+        </div>
+
         {/* Images — File Upload to Supabase Storage */}
         <div>
           <label className="block text-sm font-medium mb-1.5">
@@ -479,30 +536,34 @@ export default function ProjectEditPage() {
             <FiLink className="inline mr-1" size={14} />
             Links
           </label>
-          <div className="space-y-2 mb-2">
+          <div className="space-y-3 mb-3">
             {links.map((link, i) => (
-              <div key={i} className="flex gap-2">
-                <input
-                  type="text"
-                  value={link.label}
-                  onChange={(e) => updateLink(i, "label", e.target.value)}
-                  placeholder="Label (e.g. GitHub)"
-                  className="admin-input w-32"
-                />
+              <div key={i} className="border border-border rounded-xl p-3 space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs text-muted font-medium">Link {i + 1}</span>
+                  <button
+                    type="button"
+                    onClick={() => removeLink(i)}
+                    className="p-1 text-muted hover:text-red-400 transition-colors"
+                  >
+                    <FiTrash2 size={14} />
+                  </button>
+                </div>
                 <input
                   type="url"
                   value={link.url}
                   onChange={(e) => updateLink(i, "url", e.target.value)}
                   placeholder="https://..."
-                  className="admin-input flex-1"
+                  className="admin-input w-full"
+                  required
                 />
-                <button
-                  type="button"
-                  onClick={() => removeLink(i)}
-                  className="p-2 text-muted hover:text-red-400 transition-colors"
-                >
-                  <FiTrash2 size={16} />
-                </button>
+                <input
+                  type="text"
+                  value={link.label}
+                  onChange={(e) => updateLink(i, "label", e.target.value)}
+                  placeholder="Label (optional — e.g. GitHub, Live Demo)"
+                  className="admin-input w-full"
+                />
               </div>
             ))}
           </div>
